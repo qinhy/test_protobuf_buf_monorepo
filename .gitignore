@@ -1,0 +1,12 @@
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.DS_Store
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+gen/python/
+frontend/src/gen/
+schema/connect/
+schema/openapi.rest.json

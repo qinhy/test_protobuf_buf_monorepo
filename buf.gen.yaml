@@ -1,0 +1,25 @@
+version: v2
+plugins:
+  # Google Protobuf classes are shared by grpcio, connectrpc, and the
+  # Pydantic-from-Protobuf runtime model converter.
+  - remote: buf.build/protocolbuffers/python
+    out: gen/python
+  - remote: buf.build/protocolbuffers/pyi
+    out: gen/python
+  - remote: buf.build/grpc/python
+    out: gen/python
+  - remote: buf.build/connectrpc/py
+    out: gen/python
+    opt:
+      - protobuf=google
+
+  # Protobuf-ES v2 emits both messages and service descriptors.
+  - remote: buf.build/bufbuild/es
+    out: frontend/src/gen
+    opt:
+      - target=ts
+
+  # Optional generated OpenAPI for ConnectRPC's HTTP JSON endpoint.
+  # REST OpenAPI is exported separately from FastAPI (see README).
+  - remote: buf.build/community/sudorandom-connect-openapi
+    out: schema/connect

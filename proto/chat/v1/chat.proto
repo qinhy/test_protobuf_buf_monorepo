@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package chat.v1;
+
+// The sole authoritative chat API contract, used by REST, Connect, and gRPC.
+service ChatService {
+  rpc Say(SayRequest) returns (SayResponse);
+}
+
+message SayRequest {
+  // User's message. The demo always returns the same reply.
+  string text = 1;
+}
+
+message SayResponse {
+  // Assistant response.
+  string reply = 1;
+}
