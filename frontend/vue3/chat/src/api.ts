@@ -3,7 +3,7 @@ import { createClient } from '@connectrpc/connect';
 import { createConnectTransport } from '@connectrpc/connect-web';
 import { ChatService } from './gen/chat/v1/chat_pb';
 import { client as restTransport } from './gen/rest/client.gen';
-import { sendChat } from './gen/rest/sdk.gen';
+import { chatServiceSay } from './gen/rest/sdk.gen';
 
 export type ApiMode = 'rest' | 'connect-json' | 'connect-binary';
 
@@ -22,7 +22,7 @@ const connectBinary = createClient(ChatService, createConnectTransport({
 
 export async function ask(text: string, mode: ApiMode): Promise<string> {
   if (mode === 'rest') {
-    const result = await sendChat({ body: { text } });
+    const result = await chatServiceSay({ body: { text } });
     if (result.error) {
       throw new Error(JSON.stringify(result.error));
     }

@@ -1,7 +1,7 @@
 import { defineConfig } from '@hey-api/openapi-ts';
 
 export default defineConfig({
-  input: '../schema/openapi.rest.json',
+  input: '../../../proto/chat/gen/openapi/rest/chat/v1/chat.openapi.json',
   output: 'src/gen/rest',
   plugins: [
     '@hey-api/client-fetch',

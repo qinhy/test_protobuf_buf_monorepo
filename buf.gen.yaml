@@ -1,25 +1,32 @@
 version: v2
 plugins:
-  # Google Protobuf classes are shared by grpcio, connectrpc, and the
-  # Pydantic-from-Protobuf runtime model converter.
-  - remote: buf.build/protocolbuffers/python
-    out: gen/python
-  - remote: buf.build/protocolbuffers/pyi
-    out: gen/python
+  # Native Python protobuf and RPC services (unchanged transports).
+  - remote: buf.build/protocolbuffers/python:v36.2
+    out: backend/python/chat/src
+  - remote: buf.build/protocolbuffers/pyi:v36.2
+    out: backend/python/chat/src
   - remote: buf.build/grpc/python
-    out: gen/python
+    out: backend/python/chat/src
   - remote: buf.build/connectrpc/py
-    out: gen/python
+    out: backend/python/chat/src
     opt:
       - protobuf=google
 
-  # Protobuf-ES v2 emits both messages and service descriptors.
   - remote: buf.build/bufbuild/es
-    out: frontend/src/gen
+    out: frontend/vue3/chat/src/gen
+    # chat_pb.ts imports google/api/annotations_pb generated from the imported proto.
+    # Include imports for TypeScript only; Python uses googleapis-common-protos.
+    include_imports: true
     opt:
       - target=ts
 
-  # Optional generated OpenAPI for ConnectRPC's HTTP JSON endpoint.
-  # REST OpenAPI is exported separately from FastAPI (see README).
+  # ConnectRPC's own wire endpoint documentation (NOT the REST contract).
   - remote: buf.build/community/sudorandom-connect-openapi
-    out: schema/connect
+    out: proto/chat/gen/openapi/connect
+
+  # google.api.http annotations -> OpenAPI 3.1 -> Pydantic + FastAPI router.
+  # NOTE: openapiv3 is currently an ALPHA generator; see README.
+  - remote: buf.build/grpc-ecosystem/openapiv3
+    out: proto/chat/gen/openapi/rest
+    opt:
+      - disable_default_errors=true

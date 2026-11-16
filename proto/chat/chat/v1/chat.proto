@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package chat.v1;
+
+// Required by grpc-ecosystem/openapiv3, even though this project generates no Go.
+// Replace the module path if the API is ever used in a real Go module.
+option go_package = "github.com/example/protobuf-buf-chat/chat/v1;chatv1";
+
+import "google/api/annotations.proto";
+
+// One API contract for REST, ConnectRPC, and native gRPC.
+service ChatService {
+  // REST is generated from this HTTP annotation, not a handwritten FastAPI route.
+  rpc Say(SayRequest) returns (SayResponse) {
+    option (google.api.http) = {
+      post: "/api/chat"
+      body: "*"
+    };
+  }
+}
+
+message SayRequest {
+  // User's message. The demo always returns the same reply.
+  string text = 1;
+}
+
+message SayResponse {
+  // Assistant response.
+  string reply = 1;
+}

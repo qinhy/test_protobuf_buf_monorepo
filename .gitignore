@@ -1,12 +1,25 @@
+# Python tooling
 .venv/
 .pytest_cache/
 __pycache__/
 *.py[cod]
 .DS_Store
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
-gen/python/
-frontend/src/gen/
-schema/connect/
-schema/openapi.rest.json
+
+# Installed frontend tools and build artifacts
+frontend/vue3/chat/node_modules/
+frontend/vue3/chat/dist/
+frontend/vue3/chat/.vite/
+
+# Generated artifacts only; never ignore full project src directories
+backend/python/chat/src/chat/v1/*
+!backend/python/chat/src/chat/v1/__init__.py
+backend/python/chat/src/chat/rest/generated/models.py
+backend/python/chat/src/chat/rest/generated/server/
+frontend/vue3/chat/src/gen/
+proto/chat/gen/
+
+# Local build outputs
+backend/python/chat/build/
+backend/python/chat/dist/
+backend/python/chat/src/*.egg-info/
+backend/python/chat/*.egg-info/

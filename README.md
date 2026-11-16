@@ -1,173 +1,152 @@
-# Protobuf + Buf: FastAPI / Vue / ConnectRPC / gRPC chat demo
+# Chat API monorepo — independent per-technology projects
 
-A deliberately tiny, schema-first app. **`proto/chat/v1/chat.proto` is the only handwritten API schema.**
-Every protocol returns the same fixed text through `backend/logic.py`.
+Single `.proto` contract → Buf → OpenAPI 3.1 → Pydantic v2 + FastAPI, with
+ConnectRPC, native gRPC, and Vue 3 clients. **No manual Protobuf-to-Pydantic
+adapter and no generated-file copying.**
 
-## Capabilities
+## Project layout
 
-| Interface | Endpoint | Implementation | Payload |
-|---|---|---|---|
-| REST | `POST http://127.0.0.1:8000/api/chat` | FastAPI + generated Pydantic models | JSON |
-| Connect JSON | `POST http://127.0.0.1:8000/chat.v1.ChatService/Say` | Connect Python ASGI | ProtoJSON |
-| Connect binary | Same Connect endpoint | Connect Python ASGI | Protobuf binary |
-| Native gRPC | `127.0.0.1:50051`, `chat.v1.ChatService/Say` | grpc.aio | Protobuf over HTTP/2 (h2c) |
-| Vue | `http://127.0.0.1:5173` | Vite + generated TypeScript clients | Pick REST/Connect JSON/Connect binary |
-
-All four backends call `generate_reply(text)`; there are **no independent response implementations**.
-FastAPI serves REST and mounts the generated Connect ASGI app on port 8000. A `grpc.aio`
-server starts on port 50051 in the same FastAPI lifespan. This ensures native gRPC actually
-works with an HTTP/2 implementation rather than depending on Uvicorn's HTTP/2 trailers.
-
-## Prerequisites
-
-- Python **3.11+**, `pip`
-- Node.js **22+**, npm
-- [Buf CLI](https://buf.build/docs/installation/) on `PATH`
-- Internet access for first-time `pip`, `npm`, and Buf remote plugin downloads
-
-No Go, Java, standalone `protoc`, or database required.
-
-## Quick start (macOS / Linux / Windows PowerShell)
-
-From the repo root:
-
-```bash
-python -m venv .venv
-# macOS/Linux: source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install -r backend/requirements.txt
-python scripts/bootstrap.py
+```text
+proto/
+  chat/                         # Independent Buf source project
+    buf.yaml                    # Own module/dependencies and buf.lock (on bootstrap)
+    chat/v1/chat.proto          # Handwritten, stable import chat/v1/chat.proto
+    gen/openapi/                # GENERATED REST + Connect specifications
+backend/
+  python/
+    chat/                       # Independent installable Python application
+      pyproject.toml           # Has its OWN dev dependencies and pytest config
+      buf.gen.yaml             # Python-only generator; direct targets
+      scripts/bootstrap.py     # Python-project-local setup
+      scripts/generate.py      # Python-project-local generation
+      tests/                   # Tests runnable with local uv run pytest
+      README.md
+      verify.py
+      src/chat/
+        app.py                  # Handwritten server entry: chat.app:app
+        logic.py                # Handwritten shared business logic
+        service.py              # Handwritten RPC adapters
+        rest/services/          # Handwritten REST service implementation
+        rest/generated/         # GENERATED Pydantic models + FastAPI router
+        v1/                     # GENERATED Protobuf/gRPC/ConnectRPC Python
+frontend/
+  vue3/
+    chat/                       # Independent npm/Vite Vue 3 application
+      package.json
+      openapi-ts.config.ts
+      src/App.vue               # Handwritten Vue interface
+      src/api.ts                # Handwritten transport selection
+      src/gen/                  # GENERATED Protobuf TS + REST client
+scripts/
+  bootstrap.py                  # npm install, buf dep update, then generate
+  generate.py                   # Direct-target generation only
+buf.gen.yaml                    # Shared generator-to-target mapping
+pyproject.toml                  # Root orchestration, local editable Python app
 ```
 
-`bootstrap.py` runs `buf lint`, `buf generate`, exports FastAPI's REST OpenAPI,
-installs the frontend, and generates its typed REST client.
+The repeated `chat` in `proto/chat/chat/v1/chat.proto` is intentional:
+`proto/chat/` is the project's root and `chat/v1/chat.proto` is its stable
+Protobuf import path. This preserves generated `chat.v1` import paths when
+projects are extracted into separate repositories.
 
-**Terminal 1 (backend):**
+## Direct generation targets
 
-```bash
-python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
+| Generation step | Final destination |
+|---|---|
+| Buf Python + gRPC + ConnectRPC | `backend/python/chat/src/chat/v1/` |
+| Buf TypeScript + imported Google annotations | `frontend/vue3/chat/src/gen/` |
+| Buf REST OpenAPI 3.1 | `proto/chat/gen/openapi/rest/` |
+| Buf Connect OpenAPI docs | `proto/chat/gen/openapi/connect/` |
+| OpenAPI → Pydantic v2 | `backend/python/chat/src/chat/rest/generated/models.py` |
+| OpenAPI → FastAPI routers | `backend/python/chat/src/chat/rest/generated/server/` |
+| OpenAPI → Hey API REST TypeScript client | `frontend/vue3/chat/src/gen/rest/` |
+
+**Handwritten vs generated:** only `src/chat/v1`, `src/chat/rest/generated/models.py`,
+`src/chat/rest/generated/server`, `frontend/vue3/chat/src/gen`, and
+`proto/chat/gen/openapi/*` are cleaned. Other application files and project
+manifests are preserved. The Buf ES generator sets `include_imports: true`
+so the generated `google/api/annotations_pb.ts` is available to Vite.
+
+## First setup (Windows PowerShell, repository root)
+
+Requirements: Python 3.11+, `uv`, Node.js 22+, npm, and network access for Buf
+remote plugins and package setup.
+
+```powershell
+uv sync
+uv run python scripts/bootstrap.py
+uv run pytest tests -q
 ```
 
-**Terminal 2 (Vue frontend):**
+`bootstrap.py` installs npm dependencies inside `frontend/vue3/chat`, runs
+`buf dep update` **inside `proto/chat`** (creating its `buf.lock`), lints the
+schema, regenerates all targets directly, and verifies them.
 
-```bash
-cd frontend
+### Run applications
+
+In terminal A, **from the Python project's own directory**:
+
+```powershell
+cd backend/python/chat
+uv sync
+uv run chat-server  # or: uv run uvicorn chat.app:app --port 8000
+```
+
+The Python project also supports **independent initialization and generation**
+(no root Python environment required):
+
+```powershell
+cd backend/python/chat
+uv sync
+uv run python scripts/bootstrap.py
+uv run pytest -q
+uv run python scripts/generate.py
+```
+
+`bootstrap.py` needs a Buf CLI on `PATH` (or the one installed in the Vue
+project's `node_modules`), and access to `../../../proto/chat/`. The schema
+checkout can later live elsewhere; set `CHAT_PROTO_DIR` to its Buf module root.
+
+
+In terminal B:
+
+```powershell
+cd frontend/vue3/chat
+npm run build
 npm run dev
 ```
 
-Now visit http://127.0.0.1:5173 and switch between REST JSON, Connect JSON,
-and Connect Protobuf. The same text should appear each time.
+Open `http://127.0.0.1:5173/` for Vue and `http://127.0.0.1:8000/docs`
+for FastAPI Swagger UI. Native gRPC listens on `127.0.0.1:50051`.
 
-Swagger UI: http://127.0.0.1:8000/docs
+After modifying the `.proto` schema, from the repository root:
 
-## Automated checks
-
-```bash
-python -m pytest tests -q
+```powershell
+uv run python scripts/generate.py
 ```
 
-Before generation the pure logic tests run; after generation the API integration test also exercises REST, Connect JSON/binary and gRPC. Stop a separately running backend before executing that test (it binds gRPC port 50051).
+This skips `npm install` and `buf dep update`; it does not copy generated files.
+To check all protocols while the backend is running:
 
-## Protocol smoke tests
-
-With the backend running, in another terminal from the repo root:
-
-```bash
-python -m scripts.smoke
+```powershell
+uv run python -m scripts.smoke
 ```
 
-Or manually try each protocol:
+## Future independent Git repositories
 
-**REST JSON**
+Each domain now has its own self-contained project:
+`proto/chat` (Buf contract), `backend/python/chat` (Python package), and
+`frontend/vue3/chat` (npm app). You can split them with `git subtree split`
+while preserving history. The root `buf.gen.yaml` and `scripts/` still
+coordinate cross-project generation **today**. A future multi-repository
+pipeline should publish the versioned Buf contract and generated artifacts
+for each consumer rather than referencing other repositories through local
+paths. A directory split by itself is not a complete independent build.
 
-```bash
-curl -sS http://127.0.0.1:8000/api/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"Hello REST"}'
-```
+## Compatibility notes
 
-**ConnectRPC JSON** (note the different endpoint)
-
-```bash
-curl -sS http://127.0.0.1:8000/chat.v1.ChatService/Say \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"Hello Connect"}'
-```
-
-**Native gRPC** (using the optional [grpcurl](https://github.com/fullstorydev/grpcurl) tool):
-
-```bash
-grpcurl -plaintext -import-path proto -proto chat/v1/chat.proto \
-  -d '{"text":"Hello gRPC"}' \
-  127.0.0.1:50051 chat.v1.ChatService/Say
-```
-
-The `scripts/smoke.py` test also sends raw binary Protobuf via ConnectRPC.
-Note: gRPC uses **h2c (HTTP/2 without TLS)** for this *local-only* test.
-Put it behind TLS/authentication before exposing it to a network.
-
-## How code generation works
-
-```text
-proto/chat/v1/chat.proto                      SINGLE SOURCE OF TRUTH
-   ├── Buf / protocolbuffers/python ──> gen/python/chat/v1/chat_pb2.py
-   ├── Buf / grpc/python ────────────> gen/python/chat/v1/chat_pb2_grpc.py
-   ├── Buf / connectrpc/py ──────────> gen/python/chat/v1/chat_connect.py
-   ├── Buf / bufbuild/es ────────────> frontend/src/gen/chat/v1/chat_pb.ts
-   └── Buf / connect-openapi ────────> schema/connect/...openapi.yaml
-              │
-              └─ descriptor -> protobuf-to-pydantic (runtime)
-                           └─ FastAPI REST /api/chat
-                                 └─ schema/openapi.rest.json
-                                       └─ Hey API -> frontend/src/gen/rest/
-```
-
-**Important distinction:** `schema/connect/` documents the ConnectRPC HTTP endpoint.
-`schema/openapi.rest.json` documents FastAPI's real REST endpoint `/api/chat`.
-Both are generated from the *same* `.proto` messages, but they are not interchangeable
-API specs and do not require maintaining two handwritten schemas.
-
-## Relevant handwritten files
-
-- `proto/chat/v1/chat.proto` — canonical interface and models
-- `buf.yaml`, `buf.gen.yaml` — schema validation/codegen
-- `backend/logic.py` — one chat implementation
-- `backend/app.py` — FastAPI REST, Pydantic models and service mounting
-- `backend/service.py` — generated Connect interface + grpcio adapters
-- `frontend/src/App.vue` — minimal chat UI
-- `frontend/src/api.ts` — only switches between **generated** REST and Connect clients
-- `scripts/smoke.py` — REST, Connect JSON, Connect binary, native gRPC smoke tests
-- `tests/test_logic.py` — pure-Python unit tests
-
-### Regeneration after schema changes
-
-```bash
-python scripts/bootstrap.py
-```
-
-If adding new Protobuf fields, the REST Pydantic models automatically follow generated
-descriptors. Then FastAPI OpenAPI and the generated Vue REST/Connect clients are refreshed.
-
-## Limitations and future extensions
-
-- This intentionally implements **one unary RPC**. It does not implement model inference,
-  persistent conversations, authentication, client streaming or browser bidirectional streaming.
-- Connect for Python is **beta**. The Buf remote plugins need connectivity during generation.
-- The demo's Google Protobuf compatibility setting (`protobuf=google`) is required because
-  `protobuf-to-pydantic` reads Google Protobuf descriptors.
-- `protobuf-to-pydantic` generates Pydantic models dynamically here; this keeps the schema
-  canonical, but static Python type checkers see a runtime-created model type.
-- `http://127.0.0.1:8000/docs` describes **REST**; it does not present native gRPC.
-- Connect browser client `fetch` supports unary and server streaming, but not browser
-  full-duplex client/bidirectional streaming. RSocket/WebSocket is a future separate adapter.
-- The generated gRPC API runs **on port 50051**, independently of the Connect ASGI mount;
-  that avoids relying on Uvicorn for native gRPC/HTTP2 support.
-- Generated directories are excluded from source control here. Run bootstrap after cloning.
-
-## External documentation
-
-- [Buf generation](https://buf.build/docs/generate/)
-- [Connect for Python](https://connectrpc.com/docs/python/getting-started/)
-- [Connect browser](https://connectrpc.com/docs/web/getting-started/)
-- [protobuf-to-pydantic](https://github.com/so1n/protobuf_to_pydantic)
-- [Hey API](https://heyapi.dev/docs/openapi/typescript/get-started)
+`grpc-ecosystem/openapiv3` and the datamodel-code-generator FastAPI server
+generator have experimental functionality. Pinned versions and contract tests
+are recommended for production usage. `google.api.http` annotations are
+required for REST, and `go_package` in the `.proto` is required by the current
+OpenAPI plugin (even though no Go app is generated).

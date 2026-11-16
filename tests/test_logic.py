@@ -1,13 +1,13 @@
-from backend.logic import REPLY, generate_reply
+from chat.logic import REPLY,generate_reply
+from scripts.generate import PROTO
 
 
-def test_constant_reply():
-    assert generate_reply("hello") == REPLY
-    assert generate_reply("another input") == REPLY
+def test_reply_is_shared():
+    assert generate_reply('hello') == REPLY
+    assert generate_reply('other') == REPLY
 
 
-def test_no_schema_mirror():
-    from pathlib import Path
-    proto = (Path(__file__).parent.parent / "proto/chat/v1/chat.proto").read_text()
-    assert "service ChatService" in proto
-    assert "rpc Say(SayRequest) returns (SayResponse)" in proto
+def test_proto_defines_service():
+    proto=(PROTO/'chat/v1/chat.proto').read_text()
+    assert 'service ChatService' in proto
+    assert 'rpc Say(SayRequest) returns (SayResponse)' in proto

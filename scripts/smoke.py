@@ -10,8 +10,7 @@ import sys
 import grpc
 import httpx
 
-from backend import generated as _generated  # noqa: F401
-from backend.logic import REPLY
+from chat.logic import REPLY
 from chat.v1.chat_pb2 import SayRequest, SayResponse
 from chat.v1.chat_pb2_grpc import ChatServiceStub
 

@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+build/
+dist/
+*.egg-info/
+src/*.egg-info/
+# Generated code and routers; app code in src/chat stays tracked
+src/chat/v1/*
+!src/chat/v1/__init__.py
+src/chat/rest/generated/models.py
+src/chat/rest/generated/server/
+
+# Backend-local temporary OpenAPI contract generated from the .proto
+.generated/

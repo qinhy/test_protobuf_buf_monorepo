@@ -3,21 +3,27 @@ from pathlib import Path
 
 import pytest
 
-GENERATED = Path(__file__).resolve().parent.parent / "gen/python/chat/v1/chat_pb2.py"
+ROOT = Path(__file__).resolve().parent.parent
+GENERATED = ROOT / "backend/python/chat/src/chat/v1/chat_pb2.py"
+REST_SERVER = ROOT / "backend/python/chat/src/chat/rest/generated/server/application.py"
 
 
-@pytest.mark.skipif(not GENERATED.exists(), reason="Run buf generate first")
+@pytest.mark.skipif(not GENERATED.exists() or not REST_SERVER.exists(), reason="Run bootstrap.py first")
 def test_rest_connect_grpc_use_one_logic():
     import grpc
     from fastapi.testclient import TestClient
-    from backend.app import app
-    from backend.logic import REPLY
-    from backend import generated as _generated  # noqa: F401
+    from chat.app import app
+    from chat.logic import REPLY
     from chat.v1.chat_pb2 import SayRequest, SayResponse
     from chat.v1.chat_pb2_grpc import ChatServiceStub
 
     with TestClient(app) as client:
-        assert client.post("/api/chat", json={"text": "rest"}).json()["reply"] == REPLY
+        rest = client.post("/api/chat", json={"text": "rest"})
+        assert rest.status_code == 200, rest.text
+        assert rest.json()["reply"] == REPLY
+        assert client.post("/api/chat", json={"text": "   "}).status_code == 422
+        assert client.get("/docs").status_code == 200
+        assert "/api/chat" in client.get("/openapi.json").json()["paths"]
 
         res = client.post(
             "/chat.v1.ChatService/Say",

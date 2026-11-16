@@ -4,8 +4,7 @@ No REST/Connect/gRPC handler contains independent chat logic.
 """
 from __future__ import annotations
 
-from backend import generated as _generated  # noqa: F401  (path setup)
-from backend.logic import generate_reply
+from chat.logic import generate_reply
 from chat.v1.chat_pb2 import SayResponse, SayRequest
 from chat.v1.chat_pb2_grpc import ChatServiceServicer
 from chat.v1.chat_connect import ChatService

@@ -1,0 +1,19 @@
+# Backend-local generator template. Outputs are relative to backend/python/chat,
+# not to the monorepo root. Run using scripts/generate.py.
+version: v2
+plugins:
+  - remote: buf.build/protocolbuffers/python:v36.2
+    out: src
+  - remote: buf.build/protocolbuffers/pyi:v36.2
+    out: src
+  - remote: buf.build/grpc/python
+    out: src
+  - remote: buf.build/connectrpc/py
+    out: src
+    opt:
+      - protobuf=google
+  # The REST contract is needed for automatic Pydantic and FastAPI generation.
+  - remote: buf.build/grpc-ecosystem/openapiv3
+    out: .generated/openapi/rest
+    opt:
+      - disable_default_errors=true
