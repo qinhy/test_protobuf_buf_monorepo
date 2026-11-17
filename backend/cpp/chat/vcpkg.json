@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "chat-backend",
+  "version-string": "0.1.0",
+  "description": "Standalone C++ ChatService server with Protobuf, ConnectRPC, native gRPC, and OpenAPI-backed REST",
+  "dependencies": [
+    "cpp-httplib",
+    "grpc",
+    "gtest",
+    "nlohmann-json",
+    "protobuf"
+  ],
+  "builtin-baseline": "0df93a05b9de080129e653ec4776d7e14a1b2e4f"
+}
