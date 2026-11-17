@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chat-rpc-client"
+version = "0.1.0"
+description = "Standalone Python native gRPC and ConnectRPC frontend demo client for ChatService"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "protobuf>=7.36.2,<8",
+    "grpcio>=1.66,<2",
+    "connectrpc==0.13.0",
+    "googleapis-common-protos>=1.65,<2",
+    "typing-extensions>=4.16",
+]
+
+[project.scripts]
+chat-rpc-demo = "chat_rpc.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["chat_rpc*", "chat*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

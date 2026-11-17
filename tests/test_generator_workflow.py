@@ -19,6 +19,6 @@ def test_python_release_gate_runs_after_models_and_router_generation():
 
 
 def test_independent_projects_have_own_ignore_rules():
-    for project in (generate.PROTO, generate.PYTHON_APP, generate.FRONTEND):
+    for project in (generate.PROTO, generate.PYTHON_APP, generate.FRONTEND, generate.FRONTEND_RPC):
         assert (project/'.gitignore').is_file()
     assert 'buf.lock' not in [line.strip() for line in (generate.PROTO/'.gitignore').read_text().splitlines() if not line.strip().startswith('#')]

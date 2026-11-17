@@ -12,6 +12,18 @@ plugins:
     opt:
       - protobuf=google
 
+  # Standalone Python RPC frontend client stubs (direct target, no copying).
+  - remote: buf.build/protocolbuffers/python:v36.2
+    out: frontend/python/chat-rpc/src
+  - remote: buf.build/protocolbuffers/pyi:v36.2
+    out: frontend/python/chat-rpc/src
+  - remote: buf.build/grpc/python
+    out: frontend/python/chat-rpc/src
+  - remote: buf.build/connectrpc/py
+    out: frontend/python/chat-rpc/src
+    opt:
+      - protobuf=google
+
   - remote: buf.build/bufbuild/es
     out: frontend/vue3/chat/src/gen
     # chat_pb.ts imports google/api/annotations_pb generated from the imported proto.

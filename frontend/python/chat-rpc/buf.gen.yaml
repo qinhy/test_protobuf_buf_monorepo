@@ -1,0 +1,14 @@
+# Frontend Python client generator template. Outputs are relative to
+# frontend/python/chat-rpc, not to the monorepo root. Run using scripts/generate.py.
+version: v2
+plugins:
+  - remote: buf.build/protocolbuffers/python:v36.2
+    out: src
+  - remote: buf.build/protocolbuffers/pyi:v36.2
+    out: src
+  - remote: buf.build/grpc/python
+    out: src
+  - remote: buf.build/connectrpc/py
+    out: src
+    opt:
+      - protobuf=google

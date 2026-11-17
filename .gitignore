@@ -15,6 +15,8 @@ backend/python/chat/src/chat/v1/*
 !backend/python/chat/src/chat/v1/__init__.py
 backend/python/chat/src/chat/rest/generated/models.py
 backend/python/chat/src/chat/rest/generated/server/
+frontend/python/chat-rpc/src/chat/v1/*
+!frontend/python/chat-rpc/src/chat/v1/__init__.py
 frontend/vue3/chat/src/gen/
 proto/chat/gen/
 
@@ -23,3 +25,8 @@ backend/python/chat/build/
 backend/python/chat/dist/
 backend/python/chat/src/*.egg-info/
 backend/python/chat/*.egg-info/
+frontend/python/chat-rpc/.venv/
+frontend/python/chat-rpc/build/
+frontend/python/chat-rpc/dist/
+frontend/python/chat-rpc/src/*.egg-info/
+frontend/python/chat-rpc/*.egg-info/

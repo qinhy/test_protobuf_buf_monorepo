@@ -5,7 +5,7 @@ import tomllib
 import pytest
 
 from scripts.generate import (
-    ROOT, FRONTEND, PROTO, PYTHON_APP, GENERATED_DIRS, GENERATED_FILES,
+    ROOT, FRONTEND, FRONTEND_RPC, PROTO, PYTHON_APP, GENERATED_DIRS, GENERATED_FILES,
     check_direct_targets, check_typescript_imports,
 )
 
@@ -15,6 +15,7 @@ def test_generator_targets():
     config=(ROOT/'buf.gen.yaml').read_text()
     outputs=re.findall(r'(?m)^\s*out:\s*(\S+)\s*$',config)
     assert outputs.count('backend/python/chat/src')==4
+    assert outputs.count('frontend/python/chat-rpc/src')==4
     assert 'frontend/vue3/chat/src/gen' in outputs
     assert 'proto/chat/gen/openapi/rest' in outputs
     assert 'proto/chat/gen/openapi/connect' in outputs
@@ -22,6 +23,7 @@ def test_generator_targets():
     assert 'include_imports: true' in block
     assert config.count('include_imports: true')==1
     assert FRONTEND==ROOT/'frontend/vue3/chat'
+    assert FRONTEND_RPC==ROOT/'frontend/python/chat-rpc'
     assert PYTHON_APP==ROOT/'backend/python/chat'
     assert PROTO==ROOT/'proto/chat'
 
@@ -43,6 +45,8 @@ def test_clean_targets_only_generated_locations():
     assert PYTHON_APP/'src/chat' not in GENERATED_DIRS
     assert FRONTEND/'src' not in GENERATED_DIRS
     assert FRONTEND/'src/gen' in GENERATED_DIRS
+    assert FRONTEND_RPC/'src/chat_rpc' not in GENERATED_DIRS
+    assert FRONTEND_RPC/'src/chat/v1' in GENERATED_DIRS
     assert PROTO/'chat' not in GENERATED_DIRS
     assert PYTHON_APP/'src/chat/rest/services' not in GENERATED_DIRS
 
@@ -53,6 +57,8 @@ def test_regeneration_cleanup_preserves_handwritten_source(tmp_path,monkeypatch)
         'backend/python/chat/pyproject.toml':'manifest',
         'backend/python/chat/src/chat/app.py':'backend app',
         'backend/python/chat/src/chat/rest/services/chat_service.py':'handler',
+        'frontend/python/chat-rpc/pyproject.toml':'client manifest',
+        'frontend/python/chat-rpc/src/chat_rpc/client.py':'client code',
         'frontend/vue3/chat/src/App.vue':'vue',
         'proto/chat/chat/v1/chat.proto':'schema',
     }
@@ -60,6 +66,7 @@ def test_regeneration_cleanup_preserves_handwritten_source(tmp_path,monkeypatch)
         'backend/python/chat/src/chat/v1/chat_pb2.py',
         'backend/python/chat/src/chat/rest/generated/models.py',
         'backend/python/chat/src/chat/rest/generated/server/old.py',
+        'frontend/python/chat-rpc/src/chat/v1/chat_pb2.py',
         'frontend/vue3/chat/src/gen/chat/v1/old_pb.ts',
         'frontend/vue3/chat/src/gen/google/api/old_pb.ts',
         'frontend/vue3/chat/src/gen/rest/old.ts',
@@ -76,12 +83,14 @@ def test_regeneration_cleanup_preserves_handwritten_source(tmp_path,monkeypatch)
         f.write_text('obsolete')
     monkeypatch.setattr(generate,'ROOT',tmp_path)
     monkeypatch.setattr(generate,'PYTHON_APP',tmp_path/'backend/python/chat')
+    monkeypatch.setattr(generate,'FRONTEND_RPC',tmp_path/'frontend/python/chat-rpc')
     monkeypatch.setattr(generate,'GENERATED_DIRS',tuple(tmp_path/p.relative_to(ROOT) for p in GENERATED_DIRS))
     monkeypatch.setattr(generate,'GENERATED_FILES',tuple(tmp_path/p.relative_to(ROOT) for p in GENERATED_FILES))
     generate.clean_generated()
     assert all(not (tmp_path/r).is_file() for r in stale)
     assert all((tmp_path/r).read_text()==contents for r,contents in keep.items())
     assert (tmp_path/'backend/python/chat/src/chat/v1/__init__.py').is_file()
+    assert (tmp_path/'frontend/python/chat-rpc/src/chat/v1/__init__.py').is_file()
 
 
 def test_ts_import_checker_catches_missing_annotation_modules(tmp_path):

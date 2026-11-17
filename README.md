@@ -30,6 +30,17 @@ backend/
         rest/generated/         # GENERATED Pydantic models + FastAPI router
         v1/                     # GENERATED Protobuf/gRPC/ConnectRPC Python
 frontend/
+  python/
+    chat-rpc/                   # Independent Python native RPC demo client
+      pyproject.toml            # Client-only dependencies (grpcio, connectrpc)
+      buf.gen.yaml              # Client-only generator; direct targets
+      scripts/bootstrap.py      # Client-local setup
+      scripts/generate.py       # Client-local generation
+      tests/                    # Tests runnable with local uv run pytest
+      README.md
+      verify.py
+      src/chat_rpc/             # Handwritten RPC client & CLI (`chat-rpc-demo`)
+      src/chat/v1/              # GENERATED Protobuf/gRPC/ConnectRPC Python stubs
   vue3/
     chat/                       # Independent npm/Vite Vue 3 application
       package.json
@@ -53,7 +64,8 @@ projects are extracted into separate repositories.
 
 | Generation step | Final destination |
 |---|---|
-| Buf Python + gRPC + ConnectRPC | `backend/python/chat/src/chat/v1/` |
+| Buf Python + gRPC + ConnectRPC (backend) | `backend/python/chat/src/chat/v1/` |
+| Buf Python + gRPC + ConnectRPC (client) | `frontend/python/chat-rpc/src/chat/v1/` |
 | Buf TypeScript + imported Google annotations | `frontend/vue3/chat/src/gen/` |
 | Buf REST OpenAPI 3.1 | `proto/chat/gen/openapi/rest/` |
 | Buf Connect OpenAPI docs | `proto/chat/gen/openapi/connect/` |
@@ -61,7 +73,8 @@ projects are extracted into separate repositories.
 | OpenAPI → FastAPI routers | `backend/python/chat/src/chat/rest/generated/server/` |
 | OpenAPI → Hey API REST TypeScript client | `frontend/vue3/chat/src/gen/rest/` |
 
-**Handwritten vs generated:** only `src/chat/v1`, `src/chat/rest/generated/models.py`,
+**Handwritten vs generated:** only `backend/python/chat/src/chat/v1`,
+`frontend/python/chat-rpc/src/chat/v1`, `src/chat/rest/generated/models.py`,
 `src/chat/rest/generated/server`, `frontend/vue3/chat/src/gen`, and
 `proto/chat/gen/openapi/*` are cleaned. Other application files and project
 manifests are preserved. The Buf ES generator sets `include_imports: true`
@@ -116,6 +129,15 @@ npm run build
 npm run dev
 ```
 
+In terminal C (standalone Python native RPC demo client):
+
+```powershell
+cd frontend/python/chat-rpc
+uv sync
+uv run python scripts/generate.py
+uv run chat-rpc-demo --transport all --text "Hello RPC!"
+```
+
 Open `http://127.0.0.1:5173/` for Vue and `http://127.0.0.1:8000/docs`
 for FastAPI Swagger UI. Native gRPC listens on `127.0.0.1:50051`.
 
@@ -135,7 +157,8 @@ uv run python -m scripts.smoke
 ## Future independent Git repositories
 
 Each domain now has its own self-contained project:
-`proto/chat` (Buf contract), `backend/python/chat` (Python package), and
+`proto/chat` (Buf contract), `backend/python/chat` (Python server package),
+`frontend/python/chat-rpc` (Python native RPC client), and
 `frontend/vue3/chat` (npm app). You can split them with `git subtree split`
 while preserving history. The root `buf.gen.yaml` and `scripts/` still
 coordinate cross-project generation **today**. A future multi-repository

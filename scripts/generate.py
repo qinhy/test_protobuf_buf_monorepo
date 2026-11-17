@@ -18,6 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND = ROOT / "frontend" / "vue3" / "chat"
+FRONTEND_RPC = ROOT / "frontend" / "python" / "chat-rpc"
 PROTO = ROOT / "proto" / "chat"
 PYTHON_APP = ROOT / "backend" / "python" / "chat"
 REST_OPENAPI = PROTO / "gen" / "openapi" / "rest" / "chat" / "v1" / "chat.openapi.json"
@@ -58,6 +59,7 @@ def check_rest_openapi(path: Path = REST_OPENAPI) -> None:
 # is recreated to keep the local generated Python distribution importable.
 GENERATED_DIRS = (
     PYTHON_APP / "src/chat/v1",
+    FRONTEND_RPC / "src/chat/v1",
     # Both Buf ES and Hey API write here. Treat ALL of src/gen as generated.
     # Removes stale google/api imports when proto dependencies change.
     FRONTEND / "src/gen",
@@ -83,13 +85,22 @@ def clean_generated() -> None:
     python_init = PYTHON_APP / "src/chat/v1/__init__.py"
     python_init.parent.mkdir(parents=True, exist_ok=True)
     python_init.write_text('"""Generated chat.v1 API modules are placed in this package by Buf."""\n', encoding="utf-8")
+    client_init = FRONTEND_RPC / "src/chat/v1/__init__.py"
+    client_init.parent.mkdir(parents=True, exist_ok=True)
+    client_init.write_text('"""Generated chat.v1 API client stubs are placed in this package by Buf."""\n', encoding="utf-8")
 
 
 def check_direct_targets() -> None:
     import tomllib
     cfg = (ROOT / "buf.gen.yaml").read_text(encoding="utf-8")
     outs = set(re.findall(r"(?m)^\s*out:\s*(\S+)\s*$", cfg))
-    required = {"backend/python/chat/src", "frontend/vue3/chat/src/gen", "proto/chat/gen/openapi/rest", "proto/chat/gen/openapi/connect"}
+    required = {
+        "backend/python/chat/src",
+        "frontend/python/chat-rpc/src",
+        "frontend/vue3/chat/src/gen",
+        "proto/chat/gen/openapi/rest",
+        "proto/chat/gen/openapi/connect",
+    }
     if not required.issubset(outs):
         raise RuntimeError(f"Unexpected Buf output mapping, missing: {required - outs}")
     # Without this option the generated chat_pb.ts imports google/api/annotations_pb
@@ -143,8 +154,9 @@ def main() -> None:
     run(buf, "generate", "proto/chat", "--template", "buf.gen.yaml")
     check_rest_openapi()
     rpc_file = PYTHON_APP / "src/chat/v1/chat_pb2.py"
+    client_rpc_file = FRONTEND_RPC / "src/chat/v1/chat_pb2.py"
     ts_file = FRONTEND / "src/gen/chat/v1/chat_pb.ts"
-    if not rpc_file.is_file() or not ts_file.is_file():
+    if not rpc_file.is_file() or not client_rpc_file.is_file() or not ts_file.is_file():
         raise RuntimeError("Buf did not generate the expected Python and TypeScript targets")
     check_typescript_imports()
     run(
@@ -166,6 +178,7 @@ def main() -> None:
     if not npm:
         raise SystemExit("Missing npm; install Node.js and run bootstrap.py first")
     run(sys.executable, "backend/python/chat/verify.py")
+    run(sys.executable, "frontend/python/chat-rpc/verify.py")
     run(npm, "run", "generate:rest", cwd=FRONTEND)
     run(sys.executable, "-m", "scripts.check_generated_rest")
     print("\nAll targets generated in place. No files copied.")

@@ -1,0 +1,119 @@
+"""CLI entry point for the native gRPC / ConnectRPC demo client."""
+from __future__ import annotations
+
+import argparse
+import asyncio
+from collections.abc import Sequence
+import os
+import sys
+
+from connectrpc.errors import ConnectError
+import grpc
+
+from chat_rpc.client import ALL_TRANSPORTS, format_result, run_demo
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser for the native RPC demo client."""
+    parser = argparse.ArgumentParser(
+        prog="chat-rpc-demo",
+        description="Call ChatService.Say using generated native gRPC / ConnectRPC clients.",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=(*ALL_TRANSPORTS, "all"),
+        default="grpc",
+        help="RPC transport to use (default: grpc).",
+    )
+    parser.add_argument(
+        "--text",
+        default="Hello from native RPC client!",
+        help="Message text to send in single-shot mode.",
+    )
+    parser.add_argument(
+        "--grpc-target",
+        default=os.environ.get("GRPC_TARGET", "127.0.0.1:50051"),
+        help="Native gRPC host:port target (default: 127.0.0.1:50051).",
+    )
+    parser.add_argument(
+        "--http-url",
+        default=os.environ.get("CHAT_HTTP_URL", "http://127.0.0.1:8000"),
+        help="ConnectRPC / gRPC-Web base URL (default: http://127.0.0.1:8000).",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=5.0,
+        help="Request timeout in seconds (default: 5.0).",
+    )
+    parser.add_argument(
+        "-i",
+        "--interactive",
+        action="store_true",
+        help="Start an interactive prompt instead of sending a single message.",
+    )
+    return parser
+
+
+async def _run_interactive(args: argparse.Namespace) -> None:
+    print(
+        f"Native RPC interactive mode (transport={args.transport}). "
+        "Type a message, or 'exit' / Ctrl+C to quit."
+    )
+    while True:
+        try:
+            text = input("you> ").strip()
+        except EOFError:
+            print()
+            break
+        if not text:
+            continue
+        if text.lower() in {"exit", "quit"}:
+            break
+        results = await run_demo(
+            text,
+            transport=args.transport,
+            grpc_target=args.grpc_target,
+            http_url=args.http_url,
+            timeout=args.timeout,
+        )
+        for result in results:
+            print(format_result(result))
+
+
+async def _run_cli(args: argparse.Namespace) -> None:
+    if args.interactive:
+        await _run_interactive(args)
+        return
+    print(f"you> {args.text}")
+    results = await run_demo(
+        args.text,
+        transport=args.transport,
+        grpc_target=args.grpc_target,
+        http_url=args.http_url,
+        timeout=args.timeout,
+    )
+    for result in results:
+        print(format_result(result))
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """CLI entry point for `uv run chat-rpc-demo`."""
+    args = build_parser().parse_args(argv)
+    try:
+        asyncio.run(_run_cli(args))
+    except KeyboardInterrupt:
+        print("\nInterrupted.", file=sys.stderr)
+        return 130
+    except (grpc.aio.AioRpcError, ConnectError, OSError) as exc:
+        print(
+            f"[FAIL] RPC request failed ({type(exc).__name__}): {exc}\n"
+            "Make sure the backend is running (`uv run chat-server` in backend/python/chat).",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

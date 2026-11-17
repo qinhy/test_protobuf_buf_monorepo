@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+build/
+dist/
+*.egg-info/
+src/*.egg-info/
+
+# Generated Protobuf, gRPC, and ConnectRPC client stubs; client app code in src/chat_rpc stays tracked
+src/chat/v1/*
+!src/chat/v1/__init__.py

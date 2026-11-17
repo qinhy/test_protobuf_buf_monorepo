@@ -6,6 +6,7 @@ import tomllib
 ROOT=Path(__file__).resolve().parents[1]
 PYTHON=ROOT/'backend/python/chat'
 FRONTEND=ROOT/'frontend/vue3/chat'
+FRONTEND_RPC=ROOT/'frontend/python/chat-rpc'
 PROTO=ROOT/'proto/chat'
 
 
@@ -42,6 +43,19 @@ def test_vue_has_own_npm_project():
     assert (FRONTEND/'src/App.vue').is_file()
     assert (FRONTEND/'src/api.ts').is_file()
     assert '../../../proto/chat/gen/openapi/rest' in (FRONTEND/'openapi-ts.config.ts').read_text()
+
+
+def test_python_rpc_frontend_has_own_manifest():
+    cfg=tomllib.loads((FRONTEND_RPC/'pyproject.toml').read_text())
+    deps=cfg['project']['dependencies']
+    assert cfg['project']['name']=='chat-rpc-client'
+    assert cfg['project']['scripts']['chat-rpc-demo']=='chat_rpc.cli:main'
+    assert any(s.startswith('grpcio') for s in deps)
+    assert any(s.startswith('connectrpc') for s in deps)
+    assert not any(s.startswith(('fastapi','uvicorn')) for s in deps)
+    assert (FRONTEND_RPC/'src/chat_rpc/client.py').is_file()
+    assert (FRONTEND_RPC/'src/chat_rpc/cli.py').is_file()
+    assert (FRONTEND_RPC/'README.md').is_file()
 
 
 def test_proto_is_independent_buf_module():
