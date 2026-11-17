@@ -22,6 +22,13 @@ FRONTEND_RPC = ROOT / "frontend" / "python" / "chat-rpc"
 PROTO = ROOT / "proto" / "chat"
 PYTHON_APP = ROOT / "backend" / "python" / "chat"
 REST_OPENAPI = PROTO / "gen" / "openapi" / "rest" / "chat" / "v1" / "chat.openapi.json"
+DESCRIPTOR = PROTO / "gen" / "descriptor.binpb"
+NORMALIZE_OPENAPI = PROTO / "scripts" / "normalize_openapi.py"
+
+SERVER_OPERATION_NAMES = {
+    "/paths/~1api~1chat/post": "say",
+    "/paths/~1api~1chat~1stream/post": "stream_say",
+}
 
 
 def run(*args: str, cwd: Path = ROOT) -> None:
@@ -46,6 +53,7 @@ def check_rest_openapi(path: Path = REST_OPENAPI) -> None:
     spec = json.loads(path.read_text(encoding="utf-8"))
     if not spec.get("openapi", "").startswith("3."):
         raise RuntimeError("REST code generation requires OpenAPI 3.x")
+
     post = spec.get("paths", {}).get("/api/chat", {}).get("post")
     if not post or not post.get("requestBody") or not post.get("responses", {}).get("200"):
         raise RuntimeError("Protobuf HTTP mapping must generate POST /api/chat with JSON body and 200 response")
@@ -53,6 +61,28 @@ def check_rest_openapi(path: Path = REST_OPENAPI) -> None:
         raise RuntimeError(f"Unexpected REST operation id: {post.get('operationId')}")
     if not post.get("tags") or post["tags"][0] != "ChatService":
         raise RuntimeError(f"Unexpected REST service tag: {post.get('tags')}")
+
+    stream_post = spec.get("paths", {}).get("/api/chat/stream", {}).get("post")
+    if not stream_post or not stream_post.get("requestBody"):
+        raise RuntimeError("Protobuf HTTP mapping must generate POST /api/chat/stream with JSON body")
+    if stream_post.get("operationId") != "ChatService_StreamSay":
+        raise RuntimeError(f"Unexpected streaming REST operation id: {stream_post.get('operationId')}")
+    if not stream_post.get("tags") or stream_post["tags"][0] != "ChatService":
+        raise RuntimeError(f"Unexpected streaming REST service tag: {stream_post.get('tags')}")
+    ndjson = (
+        stream_post.get("responses", {})
+        .get("200", {})
+        .get("content", {})
+        .get("application/x-ndjson")
+    )
+    if (
+        not isinstance(ndjson, dict)
+        or ndjson.get("schema", {}).get("type") != "string"
+        or "x-ndjson-item-schema" not in ndjson
+    ):
+        raise RuntimeError(
+            "Streaming REST endpoint /api/chat/stream must advertise application/x-ndjson with x-ndjson-item-schema"
+        )
 
 
 # Safe-to-delete locations with generated files ONLY. `chat/v1/__init__.py`
@@ -66,8 +96,12 @@ GENERATED_DIRS = (
     PROTO / "gen/openapi/rest",
     PROTO / "gen/openapi/connect",
     PYTHON_APP / "src/chat/rest/generated/server",
+    PYTHON_APP / "src/chat/rest/generated/services",
 )
-GENERATED_FILES = (PYTHON_APP / "src/chat/rest/generated/models.py",)
+GENERATED_FILES = (
+    PYTHON_APP / "src/chat/rest/generated/models.py",
+    DESCRIPTOR,
+)
 
 
 def clean_generated() -> None:
@@ -152,6 +186,16 @@ def main() -> None:
     run(buf, "lint", "proto/chat")
     clean_generated()
     run(buf, "generate", "proto/chat", "--template", "buf.gen.yaml")
+    DESCRIPTOR.parent.mkdir(parents=True, exist_ok=True)
+    run(buf, "build", "proto/chat", "--as-file-descriptor-set", "-o", str(DESCRIPTOR))
+    run(
+        sys.executable,
+        str(NORMALIZE_OPENAPI),
+        "--openapi",
+        str(REST_OPENAPI),
+        "--descriptor",
+        str(DESCRIPTOR),
+    )
     check_rest_openapi()
     rpc_file = PYTHON_APP / "src/chat/v1/chat_pb2.py"
     client_rpc_file = FRONTEND_RPC / "src/chat/v1/chat_pb2.py"
@@ -173,6 +217,10 @@ def main() -> None:
         "--server-output", "backend/python/chat/src/chat/rest/generated/server",
         "--server-package", "chat.rest.generated.server",
         "--server-model-package", "chat.rest.generated.models",
+        "--server-layout", "single",
+        "--server-handler-mode", "async",
+        "--server-include-request",
+        "--server-operation-names", json.dumps(SERVER_OPERATION_NAMES),
     )
     npm = shutil.which("npm")
     if not npm:

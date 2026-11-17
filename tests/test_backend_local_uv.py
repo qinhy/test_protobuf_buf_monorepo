@@ -14,6 +14,11 @@ def test_independent_uv_project():
     assert any(d.startswith("datamodel-code-generator") for d in cfg["dependency-groups"]["dev"])
     assert cfg["tool"]["pytest"]["ini_options"]["testpaths"] == ["tests"]
     assert (BACKEND / "tests/test_logic.py").exists()
+    assert (BACKEND / "tests/test_rest_stream.py").exists()
+    assert (BACKEND / "tests/test_connect_stream.py").exists()
+    assert (BACKEND / "tests/test_grpc_stream.py").exists()
+    assert (BACKEND / "tests/test_contract.py").exists()
+    assert (BACKEND / "tests/test_cancellation.py").exists()
     assert (BACKEND / "scripts/generate.py").exists()
     assert (BACKEND / "scripts/bootstrap.py").exists()
 
@@ -25,6 +30,10 @@ def test_backend_generator_is_project_local():
     script = (BACKEND / "scripts/generate.py").read_text()
     assert "CHAT_PROTO_DIR" in script
     assert "--server-package" in script and "chat.rest.generated.server" in script
+    assert "--server-layout" in script and '"single"' in script
+    assert "--server-handler-mode" in script and '"async"' in script
+    assert "--server-include-request" in script
+    assert "--server-operation-names" in script
     assert "from scripts.generate" not in script
     assert 'PROJECT / "src/chat/v1"' in script
     assert 'run(buf, "generate"' in script

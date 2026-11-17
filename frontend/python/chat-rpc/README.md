@@ -21,6 +21,7 @@ Examples while `chat-server` is running:
 
 ```powershell
 uv run chat-rpc-demo --transport grpc --text "Hello native gRPC"
+uv run chat-rpc-demo --stream --transport all --text "Hello all streaming RPC transports"
 uv run chat-rpc-demo --transport all --text "Hello all RPC transports"
 uv run chat-rpc-demo --interactive
 ```

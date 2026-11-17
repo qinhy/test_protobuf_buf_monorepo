@@ -10,10 +10,20 @@ import "google/api/annotations.proto";
 
 // One API contract for REST, ConnectRPC, and native gRPC.
 service ChatService {
+  // Existing unary API.
   // REST is generated from this HTTP annotation, not a handwritten FastAPI route.
   rpc Say(SayRequest) returns (SayResponse) {
     option (google.api.http) = {
       post: "/api/chat"
+      body: "*"
+    };
+  }
+
+  // Server-streaming API.
+  // REST wire format is normalized to NDJSON in OpenAPI post-processing.
+  rpc StreamSay(SayRequest) returns (stream ChatEvent) {
+    option (google.api.http) = {
+      post: "/api/chat/stream"
       body: "*"
     };
   }
@@ -27,4 +37,32 @@ message SayRequest {
 message SayResponse {
   // Assistant response.
   string reply = 1;
+}
+
+message ChatEvent {
+  uint32 sequence = 1;
+
+  oneof payload {
+    ChatStart start = 2;
+    ChatDelta delta = 3;
+    ChatComplete complete = 4;
+    ChatFailure failure = 5;
+  }
+}
+
+message ChatStart {
+  string message_id = 1;
+}
+
+message ChatDelta {
+  string text = 1;
+}
+
+message ChatComplete {
+  string reply = 1;
+}
+
+message ChatFailure {
+  string code = 1;
+  string message = 2;
 }

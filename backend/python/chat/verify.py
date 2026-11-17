@@ -10,11 +10,13 @@ def verify(project: Path | None = None) -> None:
         root / "src/chat/v1/chat_connect.py",
         root / "src/chat/rest/generated/models.py",
         root / "src/chat/rest/generated/server/application.py",
+        root / "src/chat/rest/generated/server/services.py",
     ]
     missing = [str(p) for p in files if not p.is_file()]
     if missing:
         raise RuntimeError("chat-backend generation incomplete; run scripts/generate.py: " + ", ".join(missing))
     print("[PASS] chat-backend generated files are present")
+
 
 if __name__ == "__main__":
     verify()

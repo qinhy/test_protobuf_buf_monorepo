@@ -15,6 +15,7 @@ backend/python/chat/src/chat/v1/*
 !backend/python/chat/src/chat/v1/__init__.py
 backend/python/chat/src/chat/rest/generated/models.py
 backend/python/chat/src/chat/rest/generated/server/
+backend/python/chat/src/chat/rest/generated/services/
 frontend/python/chat-rpc/src/chat/v1/*
 !frontend/python/chat-rpc/src/chat/v1/__init__.py
 frontend/vue3/chat/src/gen/

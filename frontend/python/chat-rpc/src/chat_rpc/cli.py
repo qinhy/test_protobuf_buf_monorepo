@@ -10,20 +10,31 @@ import sys
 from connectrpc.errors import ConnectError
 import grpc
 
-from chat_rpc.client import ALL_TRANSPORTS, format_result, run_demo
+from chat_rpc.client import (
+    ALL_TRANSPORTS,
+    format_result,
+    format_stream_result,
+    run_demo,
+    run_stream_demo,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser for the native RPC demo client."""
     parser = argparse.ArgumentParser(
         prog="chat-rpc-demo",
-        description="Call ChatService.Say using generated native gRPC / ConnectRPC clients.",
+        description="Call ChatService.Say or StreamSay using generated native gRPC / ConnectRPC clients.",
     )
     parser.add_argument(
         "--transport",
         choices=(*ALL_TRANSPORTS, "all"),
         default="grpc",
         help="RPC transport to use (default: grpc).",
+    )
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Use server-streaming ChatService.StreamSay instead of unary Say.",
     )
     parser.add_argument(
         "--text",
@@ -55,9 +66,34 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+async def _dispatch(args: argparse.Namespace, text: str) -> None:
+    if args.stream:
+        results = await run_stream_demo(
+            text,
+            transport=args.transport,
+            grpc_target=args.grpc_target,
+            http_url=args.http_url,
+            timeout=args.timeout,
+        )
+        for result in results:
+            print(format_stream_result(result))
+        return
+
+    results = await run_demo(
+        text,
+        transport=args.transport,
+        grpc_target=args.grpc_target,
+        http_url=args.http_url,
+        timeout=args.timeout,
+    )
+    for result in results:
+        print(format_result(result))
+
+
 async def _run_interactive(args: argparse.Namespace) -> None:
+    mode = "stream" if args.stream else "unary"
     print(
-        f"Native RPC interactive mode (transport={args.transport}). "
+        f"Native RPC interactive mode (transport={args.transport}, mode={mode}). "
         "Type a message, or 'exit' / Ctrl+C to quit."
     )
     while True:
@@ -70,15 +106,7 @@ async def _run_interactive(args: argparse.Namespace) -> None:
             continue
         if text.lower() in {"exit", "quit"}:
             break
-        results = await run_demo(
-            text,
-            transport=args.transport,
-            grpc_target=args.grpc_target,
-            http_url=args.http_url,
-            timeout=args.timeout,
-        )
-        for result in results:
-            print(format_result(result))
+        await _dispatch(args, text)
 
 
 async def _run_cli(args: argparse.Namespace) -> None:
@@ -86,15 +114,7 @@ async def _run_cli(args: argparse.Namespace) -> None:
         await _run_interactive(args)
         return
     print(f"you> {args.text}")
-    results = await run_demo(
-        args.text,
-        transport=args.transport,
-        grpc_target=args.grpc_target,
-        http_url=args.http_url,
-        timeout=args.timeout,
-    )
-    for result in results:
-        print(format_result(result))
+    await _dispatch(args, args.text)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

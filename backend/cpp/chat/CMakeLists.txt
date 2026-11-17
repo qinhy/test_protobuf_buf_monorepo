@@ -89,6 +89,7 @@ add_library(chat_backend_lib STATIC
   src/app.cpp
   src/logic.cpp
   src/rest.cpp
+  src/serialization.cpp
   src/service.cpp
   ${GENERATED_PROTO_SRCS}
   ${GENERATED_PROTO_HDRS}

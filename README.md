@@ -24,9 +24,12 @@ backend/
       verify.py
       src/chat/
         app.py                  # Handwritten server entry: chat.app:app
-        logic.py                # Handwritten shared business logic
-        service.py              # Handwritten RPC adapters
-        rest/services/          # Handwritten REST service implementation
+        events.py               # Transport-neutral domain event types
+        grpc_server.py          # Native grpc.aio lifecycle
+        logic.py                # Handwritten shared async event stream
+        serialization.py        # Domain event -> Protobuf / NDJSON
+        service.py              # Handwritten RPC adapters (Connect + gRPC)
+        rest/services/          # Handwritten REST service (chat.py)
         rest/generated/         # GENERATED Pydantic models + FastAPI router
         v1/                     # GENERATED Protobuf/gRPC/ConnectRPC Python
 frontend/

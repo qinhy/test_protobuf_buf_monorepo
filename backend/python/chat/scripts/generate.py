@@ -23,14 +23,24 @@ DEFAULT_PROTO = REPO_ROOT / "proto" / "chat"
 PROTO = Path(os.environ.get("CHAT_PROTO_DIR", str(DEFAULT_PROTO))).expanduser().resolve()
 OPENAPI_DIR = PROJECT / ".generated/openapi/rest"
 OPENAPI = OPENAPI_DIR / "chat/v1/chat.openapi.json"
+DESCRIPTOR = PROJECT / ".generated/descriptor.binpb"
 
 # Only these paths are generator-owned. Handwritten services and app code are safe.
 GENERATED_DIRS = (
     PROJECT / "src/chat/v1",
     PROJECT / "src/chat/rest/generated/server",
+    PROJECT / "src/chat/rest/generated/services",
     OPENAPI_DIR,
 )
-GENERATED_FILES = (PROJECT / "src/chat/rest/generated/models.py",)
+GENERATED_FILES = (
+    PROJECT / "src/chat/rest/generated/models.py",
+    DESCRIPTOR,
+)
+
+SERVER_OPERATION_NAMES = {
+    "/paths/~1api~1chat/post": "say",
+    "/paths/~1api~1chat~1stream/post": "stream_say",
+}
 
 
 def run(*args: str, cwd: Path = PROJECT) -> None:
@@ -53,6 +63,20 @@ def find_buf() -> str:
     raise RuntimeError(
         "Buf CLI is missing. Install buf on PATH (or run the monorepo "
         "frontend's npm install), then regenerate. You can also set BUF_BIN."
+    )
+
+
+def find_normalizer() -> Path:
+    candidates = (
+        PROTO / "scripts/normalize_openapi.py",
+        REPO_ROOT / "proto/chat/scripts/normalize_openapi.py",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise RuntimeError(
+        "OpenAPI normalizer script missing. Expected normalize_openapi.py at "
+        f"{candidates[0]}"
     )
 
 
@@ -85,24 +109,54 @@ def check_openapi() -> None:
     if not OPENAPI.is_file():
         raise RuntimeError(f"Buf did not generate the expected REST OpenAPI: {OPENAPI}")
     spec = json.loads(OPENAPI.read_text(encoding="utf-8"))
+    if not spec.get("openapi", "").startswith("3."):
+        raise RuntimeError("OpenAPI must use OpenAPI 3.x")
+
     post = spec.get("paths", {}).get("/api/chat", {}).get("post", {})
     if (
-        not spec.get("openapi", "").startswith("3.")
-        or not post.get("requestBody")
+        not post.get("requestBody")
         or not post.get("responses", {}).get("200")
         or post.get("operationId") != "ChatService_Say"
     ):
         raise RuntimeError("OpenAPI must define POST /api/chat for ChatService_Say")
 
+    stream_post = spec.get("paths", {}).get("/api/chat/stream", {}).get("post", {})
+    ndjson = (
+        stream_post.get("responses", {})
+        .get("200", {})
+        .get("content", {})
+        .get("application/x-ndjson", {})
+    )
+    if (
+        not stream_post.get("requestBody")
+        or stream_post.get("operationId") != "ChatService_StreamSay"
+        or ndjson.get("schema", {}).get("type") != "string"
+        or "x-ndjson-item-schema" not in ndjson
+    ):
+        raise RuntimeError(
+            "OpenAPI must define POST /api/chat/stream with application/x-ndjson and x-ndjson-item-schema"
+        )
+
 
 def generate() -> None:
     check_proto()
     buf = find_buf()
+    normalizer = find_normalizer()
     # Run validation BEFORE deleting existing generated output.
     run(buf, "lint", str(PROTO))
     clean_generated()
     # `out: src` writes directly into this project's src/ because cwd=PROJECT.
     run(buf, "generate", str(PROTO), "--template", str(PROJECT / "buf.gen.yaml"))
+    DESCRIPTOR.parent.mkdir(parents=True, exist_ok=True)
+    run(buf, "build", str(PROTO), "--as-file-descriptor-set", "-o", str(DESCRIPTOR))
+    run(
+        sys.executable,
+        str(normalizer),
+        "--openapi",
+        str(OPENAPI),
+        "--descriptor",
+        str(DESCRIPTOR),
+    )
     check_openapi()
     run(
         sys.executable, "-m", "datamodel_code_generator",
@@ -118,6 +172,10 @@ def generate() -> None:
         "--server-output", "src/chat/rest/generated/server",
         "--server-package", "chat.rest.generated.server",
         "--server-model-package", "chat.rest.generated.models",
+        "--server-layout", "single",
+        "--server-handler-mode", "async",
+        "--server-include-request",
+        "--server-operation-names", json.dumps(SERVER_OPERATION_NAMES),
     )
     run(sys.executable, "verify.py")
     print("[PASS] Standalone Python generation completed (no copy step).")

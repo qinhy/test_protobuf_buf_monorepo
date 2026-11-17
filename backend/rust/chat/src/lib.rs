@@ -1,6 +1,8 @@
 pub mod app;
+pub mod events;
 pub mod logic;
 pub mod rest;
+pub mod serialization;
 pub mod service;
 
 pub mod generated_contract {

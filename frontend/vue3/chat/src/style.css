@@ -19,5 +19,6 @@ select { font: inherit; font-size: 13px; border: 1px solid #ccd7e3; border-radiu
 input { font: inherit; flex: 1; min-width: 0; border: 1px solid #ccd7e3; border-radius: 10px; padding: 12px 14px; }
 button { background: #255ca6; color: white; border: none; border-radius: 10px; padding: 10px 23px; font-weight: 700; cursor: pointer; }
 button:disabled { opacity: .5; cursor: not-allowed; }
+button.secondary { background: #e8eef5; color: #162235; }
 footer { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; margin-top: 20px; }
 footer a { color: #2c65b6; } footer code { color: #6c7d94; }

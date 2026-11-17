@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <exception>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -14,6 +15,7 @@
 #include "google/api/annotations.pb.h"
 #include "logic.hpp"
 #include "openapi_spec.hpp"
+#include "serialization.hpp"
 
 namespace chat::rest {
 namespace {
@@ -44,6 +46,14 @@ std::string ToStdString(const StringLike& s) {
   return std::string(s.data(), s.size());
 }
 
+std::string ToLowerAscii(std::string_view input) {
+  std::string out(input);
+  std::transform(out.begin(), out.end(), out.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  });
+  return out;
+}
+
 bool IsWhitespaceOnly(std::string_view text) {
   return std::all_of(text.begin(), text.end(), [](unsigned char ch) {
     return std::isspace(ch) != 0;
@@ -55,7 +65,7 @@ struct HttpBinding {
   std::string path;
 };
 
-HttpBinding ExtractSayHttpBinding(const google::protobuf::MethodDescriptor* method) {
+HttpBinding ExtractHttpBinding(const google::protobuf::MethodDescriptor* method) {
   const auto& rule = method->options().GetExtension(google::api::http);
   switch (rule.pattern_case()) {
     case google::api::HttpRule::kPost:
@@ -70,110 +80,236 @@ HttpBinding ExtractSayHttpBinding(const google::protobuf::MethodDescriptor* meth
       return {"PATCH", rule.patch()};
     default:
       throw std::runtime_error(
-          "google.api.http annotation missing on ChatService.Say");
+          "google.api.http annotation missing on ChatService method");
   }
 }
 
-std::string BuildOpenApiJson(const google::protobuf::ServiceDescriptor* service,
-                             const google::protobuf::MethodDescriptor* method,
-                             const HttpBinding& binding) {
+std::string BuildOpenApiJson(
+    const google::protobuf::ServiceDescriptor* service,
+    const google::protobuf::MethodDescriptor* say_method,
+    const HttpBinding& say_binding,
+    const google::protobuf::MethodDescriptor* stream_method,
+    const HttpBinding& stream_binding) {
   const std::string_view source_spec(chat::generated::kSourceOpenApiJson);
   if (!source_spec.empty()) {
     auto parsed = nlohmann::json::parse(source_spec, nullptr, false);
+    const std::string stream_lower = ToLowerAscii(stream_binding.method);
     if (!parsed.is_discarded() && parsed.contains("paths") &&
-        parsed["paths"].is_object() && parsed["paths"].contains(binding.path)) {
+        parsed["paths"].is_object() &&
+        parsed["paths"].contains(say_binding.path) &&
+        parsed["paths"].contains(stream_binding.path) &&
+        parsed["paths"][stream_binding.path].contains(stream_lower) &&
+        parsed["paths"][stream_binding.path][stream_lower]
+            ["responses"]["200"]["content"]
+                .contains("application/x-ndjson")) {
       return std::string(source_spec);
     }
   }
 
-  std::string method_lower = binding.method;
-  std::transform(method_lower.begin(), method_lower.end(), method_lower.begin(),
-                 [](unsigned char ch) {
-                   return static_cast<char>(std::tolower(ch));
-                 });
-
   const std::string service_name = ToStdString(service->name());
-  const std::string rpc_name = ToStdString(method->name());
-  const std::string operation_id = service_name + "_" + rpc_name;
-  const std::string output_full_name =
-      ToStdString(method->output_type()->full_name());
+  const std::string say_op_id =
+      service_name + "_" + ToStdString(say_method->name());
+  const std::string stream_op_id =
+      service_name + "_" + ToStdString(stream_method->name());
+  const std::string say_output_name =
+      ToStdString(say_method->output_type()->full_name());
+  const std::string event_output_name =
+      ToStdString(stream_method->output_type()->full_name());
+  const std::string stream_chunk_name = "StreamResultOf" + event_output_name;
 
-  nlohmann::json spec = {
-      {"openapi", "3.1.0"},
-      {"info", {{"title", "chat"}, {"version", "1.0.0"}}},
-      {"paths",
+  nlohmann::json request_body = nlohmann::json::object({
+      {"required", true},
+      {"content",
        nlohmann::json::object({
-           {binding.path,
+           {"application/json",
             nlohmann::json::object({
-                {method_lower,
-                 {
-                     {"tags", nlohmann::json::array({service_name})},
-                     {"summary", "REST is generated from this HTTP annotation."},
-                     {"operationId", operation_id},
-                     {"requestBody",
-                      {
-                          {"required", true},
-                          {"content",
-                           {{"application/json",
-                             {{"schema",
-                               {{"type", "object"},
-                                {"properties",
-                                 {{"text",
-                                   {{"type", "string"},
-                                    {"description", "User's message."}}}}}}}}}}},
-                      }},
-                     {"responses",
-                      {
-                          {"200",
-                           {{"description", "A successful response."},
-                            {"content",
-                             {{"application/json",
-                               {{"schema",
-                                 {{"$ref", "#/components/schemas/" +
-                                               output_full_name}}}}}}}}},
-                      }},
-                 }},
+                {"schema",
+                 nlohmann::json::object({
+                     {"type", "object"},
+                     {"properties",
+                      nlohmann::json::object({
+                          {"text",
+                           nlohmann::json::object({
+                               {"type", "string"},
+                               {"description", "User's message."},
+                           })},
+                      })},
+                 })},
             })},
        })},
-      {"components",
-       {{"schemas",
-         nlohmann::json::object({
-             {output_full_name,
-              {
-                  {"type", "object"},
-                  {"properties",
-                   {{"reply",
-                     {{"type", "string"},
-                      {"description", "Assistant response."}}}}},
-              }},
-         })}}},
-  };
+  });
+
+  nlohmann::json say_op = nlohmann::json::object({
+      {"tags", nlohmann::json::array({service_name})},
+      {"summary", "REST is generated from this HTTP annotation."},
+      {"operationId", say_op_id},
+      {"requestBody", request_body},
+      {"responses",
+       nlohmann::json::object({
+           {"200",
+            nlohmann::json::object({
+                {"description", "A successful response."},
+                {"content",
+                 nlohmann::json::object({
+                     {"application/json",
+                      nlohmann::json::object({
+                          {"schema",
+                           nlohmann::json::object({
+                               {"$ref", "#/components/schemas/" + say_output_name},
+                           })},
+                      })},
+                 })},
+            })},
+       })},
+  });
+
+  nlohmann::json stream_op = nlohmann::json::object({
+      {"tags", nlohmann::json::array({service_name})},
+      {"summary", "Server-streaming API."},
+      {"operationId", stream_op_id},
+      {"requestBody", request_body},
+      {"responses",
+       nlohmann::json::object({
+           {"200",
+            nlohmann::json::object({
+                {"description", "Incremental chat events"},
+                {"content",
+                 nlohmann::json::object({
+                     {"application/x-ndjson",
+                      nlohmann::json::object({
+                          {"schema",
+                           nlohmann::json::object({
+                               {"type", "string"},
+                               {"description",
+                                "UTF-8 NDJSON stream, one JSON object per line."},
+                           })},
+                          {"x-ndjson-item-schema",
+                           nlohmann::json::object({
+                               {"$ref", "#/components/schemas/" + stream_chunk_name},
+                           })},
+                      })},
+                 })},
+            })},
+       })},
+  });
+
+  nlohmann::json event_props = nlohmann::json::object({
+      {"sequence", nlohmann::json::object({{"type", "integer"}})},
+      {"start",
+       nlohmann::json::object({
+           {"type", "object"},
+           {"properties",
+            nlohmann::json::object({
+                {"messageId", nlohmann::json::object({{"type", "string"}})},
+            })},
+       })},
+      {"delta",
+       nlohmann::json::object({
+           {"type", "object"},
+           {"properties",
+            nlohmann::json::object({
+                {"text", nlohmann::json::object({{"type", "string"}})},
+            })},
+       })},
+      {"complete",
+       nlohmann::json::object({
+           {"type", "object"},
+           {"properties",
+            nlohmann::json::object({
+                {"reply", nlohmann::json::object({{"type", "string"}})},
+            })},
+       })},
+      {"failure",
+       nlohmann::json::object({
+           {"type", "object"},
+           {"properties",
+            nlohmann::json::object({
+                {"code", nlohmann::json::object({{"type", "string"}})},
+                {"message", nlohmann::json::object({{"type", "string"}})},
+            })},
+       })},
+  });
+
+  nlohmann::json schemas = nlohmann::json::object({
+      {say_output_name,
+       nlohmann::json::object({
+           {"type", "object"},
+           {"properties",
+            nlohmann::json::object({
+                {"reply",
+                 nlohmann::json::object({
+                     {"type", "string"},
+                     {"description", "Assistant response."},
+                 })},
+            })},
+       })},
+      {event_output_name,
+       nlohmann::json::object({
+           {"type", "object"},
+           {"properties", event_props},
+       })},
+      {stream_chunk_name,
+       nlohmann::json::object({
+           {"type", "object"},
+           {"properties",
+            nlohmann::json::object({
+                {"result",
+                 nlohmann::json::object({
+                     {"$ref", "#/components/schemas/" + event_output_name},
+                 })},
+            })},
+       })},
+  });
+
+  nlohmann::json spec = nlohmann::json::object({
+      {"openapi", "3.1.0"},
+      {"info", nlohmann::json::object({{"title", "chat"}, {"version", "1.0.0"}})},
+      {"paths",
+       nlohmann::json::object({
+           {say_binding.path,
+            nlohmann::json::object({{ToLowerAscii(say_binding.method), say_op}})},
+           {stream_binding.path,
+            nlohmann::json::object(
+                {{ToLowerAscii(stream_binding.method), stream_op}})},
+       })},
+      {"components", nlohmann::json::object({{"schemas", schemas}})},
+  });
 
   return spec.dump(2);
 }
 
-void HandleSayRest(const httplib::Request& req, httplib::Response& res) {
-  chat::v1::SayRequest proto_req;
+bool ParseAndValidateSayRequest(const httplib::Request& req,
+                                httplib::Response& res,
+                                chat::v1::SayRequest* out_req) {
   google::protobuf::util::JsonParseOptions parse_opts;
   parse_opts.ignore_unknown_fields = true;
   const auto parse_status = google::protobuf::util::JsonStringToMessage(
-      req.body, &proto_req, parse_opts);
+      req.body, out_req, parse_opts);
   if (!parse_status.ok()) {
     res.status = 422;
     nlohmann::json err = {{"detail", ToStdString(parse_status.message())}};
     res.set_content(err.dump(), "application/json");
-    return;
+    return false;
   }
 
-  if (IsWhitespaceOnly(proto_req.text())) {
+  if (IsWhitespaceOnly(out_req->text())) {
     res.status = 422;
     nlohmann::json err = {{"detail", "text must be nonempty"}};
     res.set_content(err.dump(), "application/json");
+    return false;
+  }
+
+  return true;
+}
+
+void HandleSayRest(const httplib::Request& req, httplib::Response& res) {
+  chat::v1::SayRequest proto_req;
+  if (!ParseAndValidateSayRequest(req, res, &proto_req)) {
     return;
   }
 
   chat::v1::SayResponse proto_resp;
-  proto_resp.set_reply(chat::logic::GenerateReply(proto_req.text()));
+  proto_resp.set_reply(chat::logic::CompleteReply(proto_req.text()));
   std::string out_json;
   const auto print_status =
       google::protobuf::util::MessageToJsonString(proto_resp, &out_json);
@@ -188,6 +324,59 @@ void HandleSayRest(const httplib::Request& req, httplib::Response& res) {
   res.set_content(out_json, "application/json");
 }
 
+void HandleStreamSayRest(const httplib::Request& req, httplib::Response& res) {
+  chat::v1::SayRequest proto_req;
+  if (!ParseAndValidateSayRequest(req, res, &proto_req)) {
+    return;
+  }
+
+  res.status = 200;
+  res.set_header("Cache-Control", "no-store");
+  res.set_header("X-Accel-Buffering", "no");
+
+  std::string prompt = proto_req.text();
+  res.set_chunked_content_provider(
+      "application/x-ndjson",
+      [prompt = std::move(prompt)](size_t /*offset*/,
+                                   httplib::DataSink& sink) -> bool {
+        try {
+          chat::logic::StreamReply(
+              prompt, [&](const chat::events::ChatDomainEvent& event) -> bool {
+                if (!sink.is_writable()) {
+                  return false;
+                }
+                const std::string line =
+                    chat::serialization::ToNdjsonLine(event);
+                return sink.write(line.data(), line.size());
+              });
+        } catch (const std::exception& ex) {
+          if (sink.is_writable()) {
+            const std::string err_line =
+                chat::serialization::NdjsonErrorLine(13, ex.what());
+            sink.write(err_line.data(), err_line.size());
+          }
+        }
+        sink.done();
+        return true;
+      });
+}
+
+void RegisterRoute(
+    httplib::Server& server, const HttpBinding& binding,
+    void (*handler)(const httplib::Request&, httplib::Response&)) {
+  if (binding.method == "GET") {
+    server.Get(binding.path, handler);
+  } else if (binding.method == "PUT") {
+    server.Put(binding.path, handler);
+  } else if (binding.method == "DELETE") {
+    server.Delete(binding.path, handler);
+  } else if (binding.method == "PATCH") {
+    server.Patch(binding.path, handler);
+  } else {
+    server.Post(binding.path, handler);
+  }
+}
+
 }  // namespace
 
 void RegisterRestRoutes(httplib::Server& server) {
@@ -197,25 +386,22 @@ void RegisterRestRoutes(httplib::Server& server) {
   if (!service_desc) {
     throw std::runtime_error("ChatService descriptor not found");
   }
-  const auto* method_desc = service_desc->FindMethodByName("Say");
-  if (!method_desc) {
+  const auto* say_desc = service_desc->FindMethodByName("Say");
+  if (!say_desc) {
     throw std::runtime_error("Say method descriptor not found");
   }
-  const HttpBinding binding = ExtractSayHttpBinding(method_desc);
-  const std::string openapi_json =
-      BuildOpenApiJson(service_desc, method_desc, binding);
-
-  if (binding.method == "GET") {
-    server.Get(binding.path, HandleSayRest);
-  } else if (binding.method == "PUT") {
-    server.Put(binding.path, HandleSayRest);
-  } else if (binding.method == "DELETE") {
-    server.Delete(binding.path, HandleSayRest);
-  } else if (binding.method == "PATCH") {
-    server.Patch(binding.path, HandleSayRest);
-  } else {
-    server.Post(binding.path, HandleSayRest);
+  const auto* stream_desc = service_desc->FindMethodByName("StreamSay");
+  if (!stream_desc) {
+    throw std::runtime_error("StreamSay method descriptor not found");
   }
+
+  const HttpBinding say_binding = ExtractHttpBinding(say_desc);
+  const HttpBinding stream_binding = ExtractHttpBinding(stream_desc);
+  const std::string openapi_json = BuildOpenApiJson(
+      service_desc, say_desc, say_binding, stream_desc, stream_binding);
+
+  RegisterRoute(server, say_binding, HandleSayRest);
+  RegisterRoute(server, stream_binding, HandleStreamSayRest);
 
   server.Get("/api/health",
              [](const httplib::Request& /*req*/, httplib::Response& res) {

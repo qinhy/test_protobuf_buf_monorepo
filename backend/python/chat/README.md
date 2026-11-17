@@ -51,10 +51,11 @@ install the Buf CLI and provide a versioned schema checkout using
 
 | Path | Ownership |
 |---|---|
-| `src/chat/app.py`, `logic.py`, `service.py`, `rest/services/` | Handwritten |
+| `src/chat/app.py`, `events.py`, `grpc_server.py`, `logic.py`, `serialization.py`, `service.py`, `rest/services/` | Handwritten |
 | `src/chat/v1/` | Generated Protobuf, gRPC, ConnectRPC |
 | `src/chat/rest/generated/models.py` | Generated Pydantic v2 |
 | `src/chat/rest/generated/server/` | Generated FastAPI router |
+| `src/chat/rest/generated/services/` | Generated disposable stub scaffolds (ignored) |
 | `.generated/openapi/rest/` | Backend-local generated OpenAPI (ignored) |
 
 `verify.py` checks required generated files before packaging or release.

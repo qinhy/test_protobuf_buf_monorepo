@@ -19,8 +19,8 @@ ctest --preset windows-vcpkg
 (Or use the `windows-ninja-vcpkg` preset from an **x64 Native Tools Command Prompt for VS 2022**.)
 
 By default:
-- REST `/api/chat`, `/api/health`, `/openapi.json`, `/docs`: HTTP/1.1 on `127.0.0.1:8000`
-- ConnectRPC `/chat.v1.ChatService/Say`: HTTP/1.1 on `127.0.0.1:8000`
+- REST `/api/chat`, `/api/chat/stream` (NDJSON), `/api/health`, `/openapi.json`, `/docs`: HTTP/1.1 on `127.0.0.1:8000`
+- ConnectRPC `/chat.v1.ChatService/Say`, `/chat.v1.ChatService/StreamSay`: HTTP/1.1 on `127.0.0.1:8000`
 - Native gRPC: HTTP/2 (`h2c`) on `127.0.0.1:50051`
 
 Configuration environment variables (matching `backend/python/chat` and `backend/rust/chat`):

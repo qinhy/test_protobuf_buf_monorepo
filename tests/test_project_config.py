@@ -3,74 +3,80 @@ import json
 from pathlib import Path
 import tomllib
 
-ROOT=Path(__file__).resolve().parents[1]
-PYTHON=ROOT/'backend/python/chat'
-FRONTEND=ROOT/'frontend/vue3/chat'
-FRONTEND_RPC=ROOT/'frontend/python/chat-rpc'
-PROTO=ROOT/'proto/chat'
+ROOT = Path(__file__).resolve().parents[1]
+PYTHON = ROOT / "backend/python/chat"
+FRONTEND = ROOT / "frontend/vue3/chat"
+FRONTEND_RPC = ROOT / "frontend/python/chat-rpc"
+PROTO = ROOT / "proto/chat"
 
 
 def test_python_application_has_own_manifest():
-    app=tomllib.loads((PYTHON/'pyproject.toml').read_text())
-    deps=app['project']['dependencies']
-    assert app['project']['name']=='chat-backend'
-    assert any(s.startswith('fastapi') for s in deps)
-    assert any(s.startswith('connectrpc') for s in deps)
-    assert any(s.startswith('grpcio') for s in deps)
-    assert app['tool']['setuptools']['packages']['find']['where']==['src']
-    assert (PYTHON/'src/chat/__init__.py').exists()
-    assert (PYTHON/'src/chat/app.py').is_file()
-    assert (PYTHON/'src/chat/rest/services/chat_service.py').is_file()
-    assert (PYTHON/'README.md').is_file()
+    app = tomllib.loads((PYTHON / "pyproject.toml").read_text())
+    deps = app["project"]["dependencies"]
+    assert app["project"]["name"] == "chat-backend"
+    assert any(s.startswith("fastapi") for s in deps)
+    assert any(s.startswith("connectrpc") for s in deps)
+    assert any(s.startswith("grpcio") for s in deps)
+    assert app["tool"]["setuptools"]["packages"]["find"]["where"] == ["src"]
+    assert (PYTHON / "src/chat/__init__.py").exists()
+    assert (PYTHON / "src/chat/app.py").is_file()
+    assert (PYTHON / "src/chat/events.py").is_file()
+    assert (PYTHON / "src/chat/serialization.py").is_file()
+    assert (PYTHON / "src/chat/grpc_server.py").is_file()
+    assert (PYTHON / "src/chat/rest/services/chat.py").is_file()
+    assert (PYTHON / "README.md").is_file()
 
 
 def test_root_manages_local_python_app():
-    project=tomllib.loads((ROOT/'pyproject.toml').read_text())
-    assert project['tool']['uv']['package'] is False
-    assert 'chat-backend==0.1.0' in project['project']['dependencies']
-    assert project['tool']['uv']['sources']['chat-backend']=={'path':'backend/python/chat','editable':True}
-    assert any(d.startswith('pytest') for d in project['dependency-groups']['dev'])
-    assert any(d.startswith('datamodel-code-generator') for d in project['dependency-groups']['dev'])
-    assert '.' in project['tool']['pytest']['ini_options']['pythonpath']
-    assert (ROOT/'scripts/__init__.py').is_file()
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    assert project["tool"]["uv"]["package"] is False
+    assert "chat-backend==0.1.0" in project["project"]["dependencies"]
+    assert project["tool"]["uv"]["sources"]["chat-backend"] == {"path": "backend/python/chat", "editable": True}
+    assert any(d.startswith("pytest") for d in project["dependency-groups"]["dev"])
+    assert any(d.startswith("datamodel-code-generator") for d in project["dependency-groups"]["dev"])
+    assert "." in project["tool"]["pytest"]["ini_options"]["pythonpath"]
+    assert (ROOT / "scripts/__init__.py").is_file()
 
 
 def test_vue_has_own_npm_project():
-    pkg=json.loads((FRONTEND/'package.json').read_text())
-    assert pkg['name']=='chat-vue3'
-    assert '@bufbuild/buf' in pkg['devDependencies']
-    assert 'vue' in pkg['dependencies']
-    assert (FRONTEND/'src/App.vue').is_file()
-    assert (FRONTEND/'src/api.ts').is_file()
-    assert '../../../proto/chat/gen/openapi/rest' in (FRONTEND/'openapi-ts.config.ts').read_text()
+    pkg = json.loads((FRONTEND / "package.json").read_text())
+    assert pkg["name"] == "chat-vue3"
+    assert "@bufbuild/buf" in pkg["devDependencies"]
+    assert "vue" in pkg["dependencies"]
+    assert (FRONTEND / "src/App.vue").is_file()
+    assert (FRONTEND / "src/api.ts").is_file()
+    assert (FRONTEND / "src/streaming.ts").is_file()
+    assert "../../../proto/chat/gen/openapi/rest" in (FRONTEND / "openapi-ts.config.ts").read_text()
 
 
 def test_python_rpc_frontend_has_own_manifest():
-    cfg=tomllib.loads((FRONTEND_RPC/'pyproject.toml').read_text())
-    deps=cfg['project']['dependencies']
-    assert cfg['project']['name']=='chat-rpc-client'
-    assert cfg['project']['scripts']['chat-rpc-demo']=='chat_rpc.cli:main'
-    assert any(s.startswith('grpcio') for s in deps)
-    assert any(s.startswith('connectrpc') for s in deps)
-    assert not any(s.startswith(('fastapi','uvicorn')) for s in deps)
-    assert (FRONTEND_RPC/'src/chat_rpc/client.py').is_file()
-    assert (FRONTEND_RPC/'src/chat_rpc/cli.py').is_file()
-    assert (FRONTEND_RPC/'README.md').is_file()
+    cfg = tomllib.loads((FRONTEND_RPC / "pyproject.toml").read_text())
+    deps = cfg["project"]["dependencies"]
+    assert cfg["project"]["name"] == "chat-rpc-client"
+    assert cfg["project"]["scripts"]["chat-rpc-demo"] == "chat_rpc.cli:main"
+    assert any(s.startswith("grpcio") for s in deps)
+    assert any(s.startswith("connectrpc") for s in deps)
+    assert not any(s.startswith(("fastapi", "uvicorn")) for s in deps)
+    assert (FRONTEND_RPC / "src/chat_rpc/client.py").is_file()
+    assert (FRONTEND_RPC / "src/chat_rpc/cli.py").is_file()
+    assert (FRONTEND_RPC / "README.md").is_file()
 
 
 def test_proto_is_independent_buf_module():
-    config=(PROTO/'buf.yaml').read_text()
-    assert 'version: v2' in config
-    assert 'path: .' in config
-    assert 'buf.build/googleapis/googleapis' in config
-    assert (PROTO/'chat/v1/chat.proto').is_file()
-    assert not (ROOT/'buf.yaml').exists()
+    config = (PROTO / "buf.yaml").read_text()
+    assert "version: v2" in config
+    assert "path: ." in config
+    assert "buf.build/googleapis/googleapis" in config
+    assert (PROTO / "chat/v1/chat.proto").is_file()
+    assert (PROTO / "scripts/normalize_openapi.py").is_file()
+    assert not (ROOT / "buf.yaml").exists()
 
 
-def test_bootstrap_prefers_local_buf(tmp_path,monkeypatch):
+def test_bootstrap_prefers_local_buf(tmp_path, monkeypatch):
     from scripts import bootstrap
-    monkeypatch.setattr(bootstrap.generate,'FRONTEND',tmp_path)
-    local=tmp_path/'node_modules'/'.bin'/('buf.cmd' if bootstrap.os.name=='nt' else 'buf')
+
+    monkeypatch.setattr(bootstrap.generate, "FRONTEND", tmp_path)
+    local = tmp_path / "node_modules" / ".bin" / ("buf.cmd" if bootstrap.os.name == "nt" else "buf")
     local.parent.mkdir(parents=True)
-    local.write_text('stub')
-    assert bootstrap.find_buf()==str(local)
+    local.write_text("stub")
+    assert bootstrap.find_buf() == str(local)

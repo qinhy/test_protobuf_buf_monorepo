@@ -11,6 +11,7 @@ src/chat/v1/*
 !src/chat/v1/__init__.py
 src/chat/rest/generated/models.py
 src/chat/rest/generated/server/
+src/chat/rest/generated/services/
 
 # Backend-local temporary OpenAPI contract generated from the .proto
 .generated/

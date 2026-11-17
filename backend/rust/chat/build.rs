@@ -34,6 +34,8 @@ struct MiniMethodDescriptorProto {
     name: Option<String>,
     #[prost(message, optional, tag = "4")]
     options: Option<MiniMethodOptions>,
+    #[prost(bool, optional, tag = "6")]
+    server_streaming: Option<bool>,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -84,11 +86,24 @@ fn resolve_proto_dir(manifest_dir: &Path) -> PathBuf {
     manifest_dir.join("../../../proto/chat")
 }
 
-fn synthesize_openapi(package: &str, service: &str, rpc: &str, method: &str, path: &str) -> String {
-    let method_lower = method.to_ascii_lowercase();
-    let operation_id = format!("{service}_{rpc}");
-    let schema_name = format!("{package}.SayResponse");
-    let schema_ref = format!("#/components/schemas/{schema_name}");
+fn synthesize_openapi(
+    package: &str,
+    service: &str,
+    say_rpc: &str,
+    say_method: &str,
+    say_path: &str,
+    stream_rpc: &str,
+    stream_method: &str,
+    stream_path: &str,
+) -> String {
+    let say_method_lower = say_method.to_ascii_lowercase();
+    let stream_method_lower = stream_method.to_ascii_lowercase();
+    let say_op_id = format!("{service}_{say_rpc}");
+    let stream_op_id = format!("{service}_{stream_rpc}");
+    let say_schema = format!("{package}.SayResponse");
+    let event_schema = format!("{package}.ChatEvent");
+    let event_schema_ref = format!("#/components/schemas/{event_schema}");
+    let stream_chunk_schema = format!("StreamResultOf{package}.ChatEvent");
     let spec = serde_json::json!({
         "openapi": "3.1.0",
         "info": {
@@ -96,11 +111,11 @@ fn synthesize_openapi(package: &str, service: &str, rpc: &str, method: &str, pat
             "version": "1.0.0"
         },
         "paths": {
-            path: {
-                method_lower: {
+            say_path: {
+                say_method_lower: {
                     "tags": [service],
-                    "summary": "REST is generated from this HTTP annotation.",
-                    "operationId": operation_id,
+                    "summary": "REST is generated from this HTTP annotation, not a handwritten FastAPI route.",
+                    "operationId": say_op_id,
                     "requestBody": {
                         "required": true,
                         "content": {
@@ -123,7 +138,46 @@ fn synthesize_openapi(package: &str, service: &str, rpc: &str, method: &str, pat
                             "content": {
                                 "application/json": {
                                     "schema": {
-                                        "$ref": schema_ref
+                                        "$ref": format!("#/components/schemas/{say_schema}")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            stream_path: {
+                stream_method_lower: {
+                    "tags": [service],
+                    "summary": "Server-streaming API.",
+                    "operationId": stream_op_id,
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "text": {
+                                            "type": "string",
+                                            "description": "User's message."
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Incremental chat events",
+                            "content": {
+                                "application/x-ndjson": {
+                                    "schema": {
+                                        "type": "string",
+                                        "description": "UTF-8 NDJSON stream, one JSON object per line."
+                                    },
+                                    "x-ndjson-item-schema": {
+                                        "$ref": format!("#/components/schemas/{stream_chunk_schema}")
                                     }
                                 }
                             }
@@ -134,13 +188,29 @@ fn synthesize_openapi(package: &str, service: &str, rpc: &str, method: &str, pat
         },
         "components": {
             "schemas": {
-                schema_name: {
+                say_schema: {
                     "type": "object",
                     "properties": {
                         "reply": {
                             "type": "string",
                             "description": "Assistant response."
                         }
+                    }
+                },
+                event_schema: {
+                    "type": "object",
+                    "properties": {
+                        "sequence": { "type": "integer" },
+                        "start": { "type": "object", "properties": { "messageId": { "type": "string" } } },
+                        "delta": { "type": "object", "properties": { "text": { "type": "string" } } },
+                        "complete": { "type": "object", "properties": { "reply": { "type": "string" } } },
+                        "failure": { "type": "object", "properties": { "code": { "type": "string" }, "message": { "type": "string" } } }
+                    }
+                },
+                stream_chunk_schema: {
+                    "type": "object",
+                    "properties": {
+                        "result": { "$ref": event_schema_ref }
                     }
                 }
             }
@@ -189,13 +259,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_str()
         .ok_or("non-UTF-8 proto_deps path")?;
 
+    let serde_attr =
+        "#[derive(serde::Serialize, serde::Deserialize)] #[serde(default, rename_all = \"camelCase\")]";
     tonic_prost_build::configure()
         .file_descriptor_set_path(&descriptor_path)
         .skip_protoc_run()
-        .type_attribute(
-            ".",
-            "#[derive(serde::Serialize, serde::Deserialize)] #[serde(default, rename_all = \"camelCase\")]",
-        )
+        .type_attribute(".chat.v1.SayRequest", serde_attr)
+        .type_attribute(".chat.v1.SayResponse", serde_attr)
+        .type_attribute(".chat.v1.ChatStart", serde_attr)
+        .type_attribute(".chat.v1.ChatDelta", serde_attr)
+        .type_attribute(".chat.v1.ChatComplete", serde_attr)
+        .type_attribute(".chat.v1.ChatFailure", serde_attr)
         .compile_protos(&["chat/v1/chat.proto"], &[proto_dir_str, proto_deps_str])?;
 
     let mini = MiniFileDescriptorSet::decode(descriptor_bytes.as_slice())?;
@@ -214,20 +288,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .find(|s| s.name.as_deref() == Some("ChatService"))
         .ok_or("ChatService missing from chat/v1/chat.proto")?;
     let service_name = service.name.as_deref().unwrap_or("ChatService");
+
     let say_method = service
         .method
         .iter()
         .find(|m| m.name.as_deref() == Some("Say"))
         .ok_or("Say RPC missing from ChatService")?;
-    let rpc_name = say_method.name.as_deref().unwrap_or("Say");
-    let (http_method, rest_path) = say_method
+    let say_rpc_name = say_method.name.as_deref().unwrap_or("Say");
+    let (say_http_method, say_rest_path) = say_method
         .options
         .as_ref()
         .and_then(|o| o.http.as_ref())
         .and_then(|h| h.method_and_path())
         .ok_or("google.api.http annotation missing on ChatService.Say")?;
+    let connect_say_path = format!("/{package}.{service_name}/{say_rpc_name}");
 
-    let connect_path = format!("/{package}.{service_name}/{rpc_name}");
+    let stream_method = service
+        .method
+        .iter()
+        .find(|m| m.name.as_deref() == Some("StreamSay"))
+        .ok_or("StreamSay RPC missing from ChatService")?;
+    if stream_method.server_streaming != Some(true) {
+        return Err("ChatService.StreamSay must be server-streaming".into());
+    }
+    let stream_rpc_name = stream_method.name.as_deref().unwrap_or("StreamSay");
+    let (stream_http_method, stream_rest_path) = stream_method
+        .options
+        .as_ref()
+        .and_then(|o| o.http.as_ref())
+        .and_then(|h| h.method_and_path())
+        .ok_or("google.api.http annotation missing on ChatService.StreamSay")?;
+    let connect_stream_path = format!("/{package}.{service_name}/{stream_rpc_name}");
 
     let openapi_file = proto_dir.join("gen/openapi/rest/chat/v1/chat.openapi.json");
     println!("cargo:rerun-if-changed={}", openapi_file.display());
@@ -238,17 +329,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .filter(|content| {
             serde_json::from_str::<serde_json::Value>(content)
                 .ok()
-                .and_then(|v| v.get("paths")?.get(rest_path).cloned())
+                .and_then(|v| {
+                    let paths = v.get("paths")?;
+                    let _ = paths.get(say_rest_path)?;
+                    let stream_op = paths
+                        .get(stream_rest_path)?
+                        .get(stream_http_method.to_ascii_lowercase())?;
+                    let ndjson = stream_op
+                        .get("responses")?
+                        .get("200")?
+                        .get("content")?
+                        .get("application/x-ndjson")?;
+                    ndjson.get("x-ndjson-item-schema").map(|_| ())
+                })
                 .is_some()
         })
         .unwrap_or_else(|| {
-            synthesize_openapi(package, service_name, rpc_name, http_method, rest_path)
+            synthesize_openapi(
+                package,
+                service_name,
+                say_rpc_name,
+                say_http_method,
+                say_rest_path,
+                stream_rpc_name,
+                stream_http_method,
+                stream_rest_path,
+            )
         });
 
     let generated_rest = format!(
-        "pub const REST_SAY_METHOD: &str = {http_method:?};\n\
-         pub const REST_SAY_PATH: &str = {rest_path:?};\n\
-         pub const CONNECT_SAY_PATH: &str = {connect_path:?};\n\
+        "pub const REST_SAY_METHOD: &str = {say_http_method:?};\n\
+         pub const REST_SAY_PATH: &str = {say_rest_path:?};\n\
+         pub const CONNECT_SAY_PATH: &str = {connect_say_path:?};\n\
+         pub const REST_STREAM_SAY_METHOD: &str = {stream_http_method:?};\n\
+         pub const REST_STREAM_SAY_PATH: &str = {stream_rest_path:?};\n\
+         pub const CONNECT_STREAM_SAY_PATH: &str = {connect_stream_path:?};\n\
          pub const OPENAPI_JSON: &str = {openapi_json:?};\n"
     );
     fs::write(out_dir.join("rest_generated.rs"), generated_rest)?;
